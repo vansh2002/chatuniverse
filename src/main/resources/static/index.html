@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Public Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: #f0f2f5;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 30px;
+        }
+
+        h2 {
+          color: #333;
+          margin-bottom: 20px;
+        }
+
+        #login {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+
+        #usernameInput, #messageInput {
+          padding: 10px;
+          border: 1px solid #ccc;
+          border-radius: 20px;
+          width: 250px;
+          font-size: 16px;
+        }
+
+        #joinButton, #sendButton {
+          padding: 10px 20px;
+          border: none;
+          background-color: #007bff;
+          color: white;
+          border-radius: 20px;
+          cursor: pointer;
+          font-size: 16px;
+          transition: background-color 0.2s;
+        }
+
+        #joinButton:hover, #sendButton:hover {
+          background-color: #0056b3;
+        }
+
+        #chat {
+          width: 100%;
+          max-width: 600px;
+          background: white;
+          border-radius: 10px;
+          padding: 20px;
+          height: 400px;
+          overflow-y: auto;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          margin-bottom: 10px;
+        }
+
+        .message {
+          padding: 8px 12px;
+          margin-bottom: 10px;
+          border-radius: 10px;
+          background: #f1f1f1;
+          max-width: 80%;
+        }
+
+        .message.me {
+          background: #dcf8c6;
+          align-self: flex-end;
+        }
+
+        .sender {
+          font-weight: bold;
+          color: #007bff;
+        }
+
+        .chat-footer {
+          display: flex;
+          gap: 10px;
+          width: 100%;
+          max-width: 600px;
+        }
+
+        @media (max-width: 600px) {
+          #usernameInput, #messageInput {
+            width: 100%;
+          }
+
+          .chat-footer {
+            flex-direction: column;
+          }
+        }
+    </style>
+</head>
+<body>
+
+<h2>💬 Public Chat Room</h2>
+
+<div id="login">
+    <input type="text" id="usernameInput" placeholder="Enter your name" />
+    <button id="joinButton">Join Chat</button>
+</div>
+
+<div id="chat" style="display: none;"></div>
+
+<div class="chat-footer" style="display: none;">
+    <input type="text" id="messageInput" placeholder="Type your message..." />
+    <button id="sendButton">Send</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+<script>
+    let stompClient = null;
+    let username = '';
+
+    const chat = document.getElementById('chat');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const usernameInput = document.getElementById('usernameInput');
+    const joinButton = document.getElementById('joinButton');
+    const chatFooter = document.querySelector('.chat-footer');
+
+    joinButton.addEventListener('click', function () {
+      const input = usernameInput.value.trim();
+      if (input === '') {
+        alert('Please enter a username');
+        return;
+      }
+      username = input;
+      document.getElementById('login').style.display = 'none';
+      chat.style.display = 'block';
+      chatFooter.style.display = 'flex';
+      connect();
+    });
+
+    function connect() {
+      const socket = new SockJS('/ws');
+      stompClient = Stomp.over(socket);
+
+      stompClient.connect({}, function () {
+
+        stompClient.subscribe('/topic/public', function (message) {
+          const msg = JSON.parse(message.body);
+          const isMine = msg.sender === username;
+          appendMessage(msg.sender, msg.content, isMine);
+        });
+
+        fetch('/api/public-chat/history')
+          .then(response => response.json())
+          .then(messages => {
+            messages.forEach(msg => {
+              const isMine = msg.sender === username;
+              appendMessage(msg.sender, msg.content, isMine);
+            });
+          });
+      });
+    }
+
+    function sendMessage() {
+      const content = messageInput.value.trim();
+      if (content === '' || username === '') return;
+
+      const chatMessage = {
+        sender: username,
+        content: content,
+        type: 'CHAT'
+      };
+
+      stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
+      messageInput.value = '';
+    }
+
+    function appendMessage(sender, content, isMine) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message');
+      if (isMine) messageDiv.classList.add('me');
+
+      const senderSpan = document.createElement('span');
+      senderSpan.classList.add('sender');
+      senderSpan.textContent = sender + ': ';
+
+      messageDiv.appendChild(senderSpan);
+      messageDiv.append(content);
+      chat.appendChild(messageDiv);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') sendMessage();
+    });
+</script>
+</body>
+</html>
